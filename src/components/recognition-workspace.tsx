@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Spinner } from "@heroui/react";
+import { Button, Checkbox, Spinner } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import { FaceOverlay, faceLabel } from "@/components/face-overlay";
 import { PhotoPicker } from "@/components/photo-picker";
@@ -40,6 +40,7 @@ export function RecognitionWorkspace() {
   );
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  const [detectObjects, setDetectObjects] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
   const currentUrlRef = useRef<string | null>(null);
 
@@ -65,6 +66,7 @@ export function RecognitionWorkspace() {
     try {
       const body = new FormData();
       body.append("image", new File([photo.blob], "photo.jpg", { type: "image/jpeg" }));
+      if (detectObjects) body.append("objects", "true");
       const data = await apiFetch<RecognitionResult>("/api/recognize", {
         method: "POST",
         body,
@@ -116,19 +118,24 @@ export function RecognitionWorkspace() {
   }
 
   const faces = result?.faces ?? [];
-  const showResults = result !== null && faces.length > 0;
+  const objects = result?.objects ?? [];
+  const showResults = result !== null && (faces.length > 0 || objects.length > 0);
   const operationFailed = result !== null && result.facesStatus === "failed";
+  const objectsFailed = result !== null && result.objectsStatus === "failed";
+  const objectsRequested = result !== null && result.objectsStatus !== "disabled";
   const firstIssue = result?.issues[0];
+  const firstObjectIssue = result?.objectIssues[0];
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-8 md:flex-row md:items-start md:gap-8">
         <div className="min-w-0 md:flex-1">
-          {result && result.faces.length > 0 ? (
+          {result && showResults ? (
             <FaceOverlay
               src={photo.url}
               image={result.image}
               faces={faces}
+              objects={objects}
               selected={selected}
               onSelect={setSelected}
             />
@@ -139,7 +146,7 @@ export function RecognitionWorkspace() {
                 alt="Fotografía elegida"
                 width={photo.width}
                 height={photo.height}
-                className="block h-auto max-h-[75vh] w-auto max-w-full"
+                className="block h-auto max-h-[50vh] w-auto max-w-full"
               />
             </div>
           )}
@@ -147,45 +154,62 @@ export function RecognitionWorkspace() {
 
         {showResults ? (
           <aside aria-label="Resultados" className="md:w-[280px] md:shrink-0">
-            <ul className="flex flex-col gap-1">
-              {faces.map((face, position) => {
-                const isSelected = selected === face.detectionIndex;
-                return (
-                  <li key={face.detectionIndex}>
-                    <button
-                      type="button"
-                      aria-pressed={isSelected}
-                      onClick={() => setSelected(face.detectionIndex)}
-                      className={`flex min-h-11 w-full flex-col items-start justify-center rounded-xl border px-3 py-2 text-left transition-colors duration-150 ${
-                        isSelected
-                          ? "border-accent bg-accent/10"
-                          : "border-transparent hover:bg-surface-secondary"
-                      }`}
-                    >
-                      <span className="flex w-full items-baseline gap-2">
-                        <span className="text-sm text-muted">{position + 1}</span>
-                        <span
-                          className={`min-w-0 flex-1 truncate ${face.status === "matched" ? "font-medium" : "text-muted"}`}
-                        >
-                          {faceLabel(face)}
+            {faces.length > 0 ? (
+              <ul className="flex flex-col gap-1">
+                {faces.map((face, position) => {
+                  const isSelected = selected === face.detectionIndex;
+                  return (
+                    <li key={face.detectionIndex}>
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => setSelected(face.detectionIndex)}
+                        className={`flex min-h-11 w-full flex-col items-start justify-center rounded-xl border px-3 py-2 text-left transition-colors duration-150 ${
+                          isSelected
+                            ? "border-accent bg-accent/10"
+                            : "border-transparent hover:bg-surface-secondary"
+                        }`}
+                      >
+                        <span className="flex w-full items-baseline gap-2">
+                          <span className="text-sm text-muted">{position + 1}</span>
+                          <span
+                            className={`min-w-0 flex-1 truncate ${face.status === "matched" ? "font-medium" : "text-muted"}`}
+                          >
+                            {faceLabel(face)}
+                          </span>
                         </span>
-                      </span>
-                      <RowDetail face={face} />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+                        <RowDetail face={face} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {objects.length > 0 ? (
+              <div className={faces.length > 0 ? "mt-6" : ""}>
+                <h2 className="px-3 text-sm font-medium text-muted">Objetos</h2>
+                <ul className="mt-1 flex flex-col">
+                  {objects.map((object, index) => (
+                    <li key={index} className="flex min-h-11 items-center px-3 py-2">
+                      {object.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </aside>
         ) : null}
       </div>
 
       <div role="status" aria-live="polite" className="flex flex-col gap-2 text-sm">
         {isRecognizing ? <span className="text-muted">Reconociendo rostros…</span> : null}
-        {result && result.faces.length === 0 && !operationFailed ? (
+        {result && faces.length === 0 && !operationFailed ? (
           <p className="text-muted">No se detectaron rostros en esta foto. Prueba con otra.</p>
         ) : null}
-        {result && result.partial && !operationFailed ? (
+        {objectsRequested && !objectsFailed && objects.length === 0 ? (
+          <p className="text-muted">No se detectaron objetos en esta foto.</p>
+        ) : null}
+        {result && result.facesStatus === "partial" ? (
           <p className="text-muted">
             Algunos rostros no se pudieron evaluar. Se muestran los resultados disponibles.
             {firstIssue?.requestId ? ` ID de solicitud: ${firstIssue.requestId}.` : ""}
@@ -201,6 +225,14 @@ export function RecognitionWorkspace() {
             : ""}
         </p>
       ) : null}
+      {objectsFailed ? (
+        <p role="alert" className="text-sm text-danger">
+          No se pudieron detectar los objetos.
+          {firstObjectIssue
+            ? ` (${firstObjectIssue.code}${firstObjectIssue.requestId ? ` · ${firstObjectIssue.requestId}` : ""})`
+            : ""}
+        </p>
+      ) : null}
       {error ? (
         <div role="alert" className="text-sm text-danger">
           <p>{error.message}</p>
@@ -213,6 +245,22 @@ export function RecognitionWorkspace() {
         <p role="alert" className="text-sm text-danger">
           {photoError}
         </p>
+      ) : null}
+
+      {!result ? (
+        <Checkbox
+          isSelected={detectObjects}
+          onChange={setDetectObjects}
+          isDisabled={isRecognizing}
+          name="objects"
+        >
+          <Checkbox.Content>
+            <Checkbox.Control className="border border-border shadow-none">
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+            <span className="text-sm">Detectar también objetos visibles</span>
+          </Checkbox.Content>
+        </Checkbox>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">

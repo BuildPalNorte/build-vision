@@ -242,4 +242,52 @@ describe("recognizeFaces", () => {
     const result = await recognizeFaces(context, image);
     expect(result).toMatchObject({ faces: [], partial: false, facesStatus: "succeeded" });
   });
+  it("requests objects only on opt-in, without prompt or targets, and maps them", async () => {
+    const objectBox = { left: 0.6, top: 0.1, width: 0.2, height: 0.2 };
+    const { context, analyze } = makeContext({
+      analyze: {
+        image: { width: 640, height: 480, format: "jpeg" },
+        faces,
+        objects: [{ label: "glasses", boundingBox: objectBox }],
+        operations: {
+          faces: { status: "succeeded", errors: [] },
+          objects: { status: "succeeded", errors: [] },
+        },
+        partial: false,
+      },
+    });
+    const result = await recognizeFaces(context, image, { detectObjects: true });
+
+    const [params] = analyze.mock.calls[0];
+    expect(params.objects).toEqual({ enabled: true });
+    expect(params.faces.collectionId).toBe(COLLECTION_ID);
+    expect(result.objects).toEqual([{ label: "glasses", boundingBox: objectBox }]);
+    expect(result.objectsStatus).toBe("succeeded");
+  });
+
+  it("keeps faces when the objects operation fails", async () => {
+    const { context } = makeContext({
+      analyze: {
+        image: { width: 640, height: 480, format: "jpeg" },
+        faces,
+        objects: [],
+        operations: {
+          faces: { status: "succeeded", errors: [] },
+          objects: {
+            status: "failed",
+            errors: [{ code: "vision.provider_unavailable", message: "raw", requestId: "req_2" }],
+          },
+        },
+        partial: true,
+      },
+    });
+    const result = await recognizeFaces(context, image, { detectObjects: true });
+
+    expect(result.faces).toHaveLength(3);
+    expect(result.facesStatus).toBe("succeeded");
+    expect(result.objectsStatus).toBe("failed");
+    expect(result.objectIssues).toEqual([
+      { code: "vision.provider_unavailable", requestId: "req_2" },
+    ]);
+  });
 });

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { enrollmentInputSchema, faceIdSchema, nameSchema } from "@/lib/contracts";
+import {
+  detectObjectsSchema,
+  enrollmentInputSchema,
+  faceIdSchema,
+  nameSchema,
+} from "@/lib/contracts";
 import { toImageRect } from "@/lib/geometry";
 
 describe("enrollment input", () => {
@@ -24,6 +29,16 @@ describe("enrollment input", () => {
   it("validates face identifiers", () => {
     expect(faceIdSchema.safeParse("face_01abc").success).toBe(true);
     expect(faceIdSchema.safeParse("../x").success).toBe(false);
+  });
+});
+
+describe("detectObjectsSchema", () => {
+  it("accepts only the literal string true or nothing", () => {
+    expect(detectObjectsSchema.safeParse("true").success).toBe(true);
+    expect(detectObjectsSchema.safeParse(undefined).success).toBe(true);
+    for (const value of ["false", "on", "1", ""]) {
+      expect(detectObjectsSchema.safeParse(value).success).toBe(false);
+    }
   });
 });
 

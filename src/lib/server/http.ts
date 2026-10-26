@@ -53,7 +53,7 @@ export function mapProviderError(
     case "auth.forbidden":
       return make(
         403,
-        "La clave de API no tiene permisos suficientes. Necesita face:read y face:write.",
+        "La clave de API no tiene permisos suficientes. Necesita face:read y face:write (y vision:read para detectar objetos).",
       );
     case "face.not_enabled":
       return make(409, "Face no está habilitado en el proyecto de Viso.");

@@ -1,6 +1,6 @@
 # Viso Faces
 
-A small Phase 1 demo: register a person's face and recognize registered faces in another photograph. It uses `@viso-lol/sdk@0.2.0` (Face collections and face-only `vision.analyze`).
+A small demo: register a person's face and recognize registered faces in another photograph. It uses `@viso-lol/sdk@0.2.0` (Face collections and `vision.analyze`). Phase 2 adds optional object detection on the recognition photo.
 
 - Next.js 16.4 (App Router, Node.js Route Handlers), React 19, strict TypeScript
 - Tailwind CSS v4 and HeroUI v3, with an Apple-inspired light interface
@@ -16,11 +16,11 @@ Design reference: [`design.md`](./design.md).
 | `/`           | Introduction                                                 |
 | `/people`     | Registered names (cursor-paginated) and delete with confirmation |
 | `/people/new` | Register a face: name, one portrait, explicit consent        |
-| `/recognize`  | Upload a photo and see boxes, names, and similarity scores   |
+| `/recognize`  | Upload a photo and see boxes, names, similarity scores, and optionally detected objects |
 
 Photographs are temporary request data. The app stores no image bytes and needs no image bucket and no extra database. The indexed Viso face records are the persistent source of truth: each record keeps a server-generated UUID in `externalId`, the name in `metadata.name`, and the consent timestamp in `metadata.consentAt`.
 
-Not in this phase: camera capture, object detection, prompts, authentication, stored portraits, history, or analytics.
+Phase 2 (authorized) is limited to optional object detection on `/recognize`. Still out of scope: camera capture, prompts or target lists, person–object association, authentication, stored portraits, history, and analytics.
 
 ## Configuration
 
@@ -36,7 +36,7 @@ Requirements on the Viso side:
 
 - **Face is enabled** for the project.
 - The collection **already exists, is `active`, and belongs to the API key's project**. The app never creates collections and never accepts a collection ID from the client.
-- The API key has the **`face:read`** and **`face:write`** scopes. Face-only `vision.analyze` does not need `vision:read`.
+- The API key has the **`face:read`** and **`face:write`** scopes. Face-only recognition does not need `vision:read`; **object detection (Phase 2) additionally needs `vision:read`**, and its operations are metered separately.
 - No AWS, Gemini, or bucket credentials are needed by this app (any `VISO_BUCKET_ID` value in your environment is ignored).
 
 Configuration is validated while handling each request, so the app builds and renders without credentials. When variables are missing, the API answers with a setup-required message instead of failing.
@@ -72,7 +72,7 @@ bun run dev        # http://localhost:3000
 
 - **Enrollment** (`POST /api/people`): validates name (1–64 Unicode characters), literal consent `"true"`, and the image; calls `face.detect` and continues only if exactly one face is found; then `face.collections.faces.index` with `maxFaces: 1` and `qualityFilter: "auto"`. Success is reported only if exactly one face was indexed.
 - **List / delete** (`GET /api/people`, `DELETE /api/people/[faceId]`): `faces.list` (page size 20, cursor) and `faces.delete`, always scoped to the configured collection.
-- **Recognition** (`POST /api/recognize`): one `vision.analyze` call with `faces: { enabled: true, collectionId, threshold: 90, maxDetectedFaces: 10 }` and no `objects`. Matched, unknown, and failed faces stay distinct; partial responses keep successful faces and are never retried automatically. Boxes are drawn from the query faces (`analysis.faces[i].boundingBox`), never from the nested enrollment match. Similarity is shown as a score, not a calibrated probability.
+- **Recognition** (`POST /api/recognize`): one `vision.analyze` call with `faces: { enabled: true, collectionId, threshold: 90, maxDetectedFaces: 10 }`. `objects` is omitted unless the user ticks `Detectar también objetos visibles` (off by default); then the same call adds `objects: { enabled: true }` with no prompt or targets, so the provider returns prominent objects. Object results are drawn as thin yellow boxes with labels and listed under `Objetos`; they are not associated with people. If only the objects operation fails, face results are kept and a short message is shown. Matched, unknown, and failed faces stay distinct; partial responses keep successful faces and are never retried automatically. Boxes are drawn from the query faces (`analysis.faces[i].boundingBox`), never from the nested enrollment match. Similarity is shown as a score, not a calibrated probability.
 - **Images** are validated again on the server with `sharp` (real format, dimensions, size, and a full decode) before any provider call.
 
 ## Tests and their limits
@@ -88,4 +88,5 @@ Use only photos of people who have given consent. Registration and recognition m
 3. Reload `/people` and confirm both names persist.
 4. Open `/recognize`, choose another photo that contains both people, and press `Reconocer rostros`. Check the boxes, names, and similarity scores; select rows and boxes to see the highlight.
 5. Recognize a photo that includes a face that is not registered and confirm it shows `Sin coincidencia`.
-6. Delete one registration from `/people`, confirm the dialog, and verify it disappears and is no longer recognized.
+6. Repeat step 4 with `Detectar también objetos visibles` ticked (key needs `vision:read`) and confirm object boxes and labels appear next to the face results.
+7. Delete one registration from `/people`, confirm the dialog, and verify it disappears and is no longer recognized.

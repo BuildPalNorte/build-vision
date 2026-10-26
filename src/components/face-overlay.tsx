@@ -1,7 +1,7 @@
 "use client";
 
 import { toImageRect, toPercentBox } from "@/lib/geometry";
-import type { RecognizedFace } from "@/lib/contracts";
+import type { DetectedObject, RecognizedFace } from "@/lib/contracts";
 
 export function faceLabel(face: RecognizedFace): string {
   if (face.status === "matched") return face.name ?? "Persona sin nombre";
@@ -14,6 +14,8 @@ type FaceOverlayProps = {
   /** Dimensions of the analyzed image; this is also the SVG coordinate space. */
   image: { width: number; height: number };
   faces: RecognizedFace[];
+  /** Optional detected objects, drawn in a separate quiet style. Not selectable. */
+  objects?: DetectedObject[];
   selected: number | null;
   onSelect: (detectionIndex: number) => void;
 };
@@ -23,7 +25,14 @@ type FaceOverlayProps = {
  * which is expressed on the query image, and are mapped into the analyzed image's pixel
  * space. The SVG sits on a wrapper that shrinks to the displayed image so both stay aligned.
  */
-export function FaceOverlay({ src, image, faces, selected, onSelect }: FaceOverlayProps) {
+export function FaceOverlay({
+  src,
+  image,
+  faces,
+  objects = [],
+  selected,
+  onSelect,
+}: FaceOverlayProps) {
   return (
     <div className="relative mx-auto w-fit max-w-full overflow-hidden rounded-2xl bg-surface-secondary">
       {/* The exact normalized blob that was analyzed. */}
@@ -40,6 +49,25 @@ export function FaceOverlay({ src, image, faces, selected, onSelect }: FaceOverl
         className="absolute inset-0 size-full"
         aria-hidden="true"
       >
+        {objects.map((object, index) => {
+          const rect = toImageRect(object.boundingBox, image);
+          return (
+            <rect
+              key={`object-${index}`}
+              x={rect.x}
+              y={rect.y}
+              width={rect.width}
+              height={rect.height}
+              rx={4}
+              fill="transparent"
+              pointerEvents="none"
+              stroke="#ffd60a"
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+              style={{ filter: "drop-shadow(0 0 1px rgba(0, 0, 0, 0.55))" }}
+            />
+          );
+        })}
         {faces.map((face) => {
           const rect = toImageRect(face.boundingBox, image);
           const isSelected = selected === face.detectionIndex;
@@ -63,6 +91,23 @@ export function FaceOverlay({ src, image, faces, selected, onSelect }: FaceOverl
           );
         })}
       </svg>
+      {objects.map((object, index) => {
+        const box = toPercentBox(object.boundingBox);
+        return (
+          <span
+            key={`object-label-${index}`}
+            aria-hidden="true"
+            className="pointer-events-none absolute max-w-[45%] truncate rounded-full bg-white/90 px-2 py-0.5 text-xs font-medium leading-5 text-foreground"
+            style={{
+              left: `${box.left}%`,
+              top: `${box.top + box.height}%`,
+              transform: "translateY(calc(-100% - 4px)) translateX(4px)",
+            }}
+          >
+            {object.label}
+          </span>
+        );
+      })}
       {faces.map((face, position) => {
         const box = toPercentBox(face.boundingBox);
         const isSelected = selected === face.detectionIndex;

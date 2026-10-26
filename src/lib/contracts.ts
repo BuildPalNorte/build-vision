@@ -76,6 +76,12 @@ export type RecognizedFace = {
   error: RecognitionIssue | null;
 };
 
+export type DetectedObject = {
+  label: string;
+  /** Normalized box on the query image. */
+  boundingBox: BoundingBox;
+};
+
 export type RecognitionResult = {
   image: { width: number; height: number };
   faces: RecognizedFace[];
@@ -83,7 +89,14 @@ export type RecognitionResult = {
   /** Overall status of the face operation. */
   facesStatus: "succeeded" | "partial" | "failed" | "disabled";
   issues: RecognitionIssue[];
+  /** Objects are only detected when the user turns the option on. */
+  objects: DetectedObject[];
+  objectsStatus: "succeeded" | "failed" | "disabled";
+  objectIssues: RecognitionIssue[];
 };
+
+/** Optional recognition flag. Must be the literal submitted string "true". */
+export const detectObjectsSchema = z.literal("true").optional();
 
 export type ApiErrorBody = {
   error: {

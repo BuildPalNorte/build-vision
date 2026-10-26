@@ -152,12 +152,13 @@ function toRecognizedFace(face: VisionFace): RecognizedFace {
 }
 
 /**
- * Face-only group recognition. `objects` is intentionally omitted. Boxes come from the
- * query faces, never from the nested enrollment match.
+ * Group face recognition. `objects` is omitted unless the caller opts in. Boxes come from
+ * the query faces, never from the nested enrollment match.
  */
 export async function recognizeFaces(
   { viso, collectionId }: FaceContext,
   image: ValidatedImage,
+  options: { detectObjects?: boolean } = {},
 ): Promise<RecognitionResult> {
   const analysis = await viso.vision.analyze(
     {
@@ -168,6 +169,8 @@ export async function recognizeFaces(
         threshold: RECOGNITION_THRESHOLD,
         maxDetectedFaces: MAX_DETECTED_FACES,
       },
+      // Objects are opt-in (extra metered operation); prominent objects, no prompt or targets.
+      ...(options.detectObjects ? { objects: { enabled: true as const } } : {}),
     },
     { timeoutMs: RECOGNITION_TIMEOUT_MS },
   );
@@ -178,5 +181,10 @@ export async function recognizeFaces(
     partial: analysis.partial,
     facesStatus: analysis.operations.faces.status,
     issues: analysis.operations.faces.errors.map(toIssue),
+    objects: options.detectObjects
+      ? analysis.objects.map(({ label, boundingBox }) => ({ label, boundingBox }))
+      : [],
+    objectsStatus: analysis.operations.objects.status,
+    objectIssues: analysis.operations.objects.errors.map(toIssue),
   };
 }
